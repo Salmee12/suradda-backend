@@ -3,11 +3,28 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from sqlalchemy import select, update
 from app.db.session import AsyncSessionLocal
 from app.models.room import Room
+from app.models.user import User
 from app.core.security import decode_token
 from app.services.websocket_manager import manager
 from jose import JWTError
 
 router = APIRouter()
+
+
+async def _broadcast_participants(room_id: uuid.UUID):
+    user_ids = list(manager.active_connections.get(room_id, {}).keys())
+    if not user_ids:
+        return
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(User).where(User.id.in_(user_ids)))
+        users = result.scalars().all()
+
+    payload = {
+        "type": "participants",
+        "participants": [{"user_id": str(u.id), "username": u.username} for u in users],
+        "count": len(users),
+    }
+    await manager.broadcast(room_id, payload)
 
 
 @router.websocket("/rooms/{room_id}")
@@ -31,6 +48,7 @@ async def room_websocket(websocket: WebSocket, room_id: uuid.UUID, token: str = 
         is_host = room.host_id == user_id
 
     await manager.connect(room_id, user_id, websocket)
+    await _broadcast_participants(room_id)  # NEW — everyone gets the fresh list, including the new joiner
 
     try:
         while True:
@@ -57,6 +75,4 @@ async def room_websocket(websocket: WebSocket, room_id: uuid.UUID, token: str = 
 
     except WebSocketDisconnect:
         manager.disconnect(room_id, user_id)
-        await manager.broadcast(
-            room_id, {"type": "participant_count", "count": manager.participant_count(room_id)}
-        )
+        await _broadcast_participants(room_id)  # NEW — replaces the old count-only broadcast
