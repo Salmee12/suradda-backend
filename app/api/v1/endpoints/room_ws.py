@@ -40,6 +40,19 @@ async def room_websocket(websocket: WebSocket, room_id: uuid.UUID, token: str = 
         return
 
     async with AsyncSessionLocal() as db:
+        # The token alone used to be enough to get in here, which meant the
+        # subscription gate on /rooms/create and /rooms/join could be walked
+        # straight past by opening the socket directly. Load the row and apply
+        # the same rules the HTTP routes do.
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if user is None or not user.is_active:
+            await websocket.close(code=4401)
+            return
+        if not user.is_subscribed:
+            await websocket.close(code=4403)
+            return
+
         result = await db.execute(select(Room).where(Room.id == room_id))
         room = result.scalar_one_or_none()
         if not room:
