@@ -40,3 +40,19 @@ class Song(Base):
         String(6),
         nullable=False,
     )
+
+    # Cloudinary's own handle for the stored file, kept so a deleted catalogue
+    # entry can take its audio and cover with it instead of orphaning them in
+    # the media library. Nullable because rows created before the upload route
+    # existed (and any row added by hand with a URL from elsewhere) have no
+    # Cloudinary asset we own — deleting those leaves the file alone, which is
+    # the right behaviour rather than a gap.
+    song_public_id: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    thumbnail_public_id: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
