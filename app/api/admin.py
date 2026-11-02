@@ -50,9 +50,13 @@ from app.schemas.song import (
     SongDeleteResponse,
     SongListResponse,
     SongUpdate,
+    YTMusicImportResult,
+    YTMusicPlaylistImport,
+    YTMusicSearchImport,
     clean_hex_code,
 )
 from app.services import cloudinary_service as cloud
+from app.services import ytmusic_import
 
 # Imported rather than reimplemented on purpose: this is the one place that
 # knows how to read a caller's address through Render's proxy, and two copies of
@@ -342,4 +346,62 @@ async def delete_song(
     )
 
 
+# ---------------------------------------------------------------------------
+# YouTube Music bulk import (demo / catalogue seeding)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/import/search",
+    response_model=YTMusicImportResult,
+    dependencies=[Depends(require_admin)],
+    summary="Import tracks from a YouTube Music search",
+)
+async def import_from_ytmusic_search(
+    payload: YTMusicSearchImport,
+    db: AsyncSession = Depends(get_db),
+):
+    """Search YouTube Music, download audio, upload to Cloudinary, insert rows.
+
+    Controlled by ``limit`` (1–30). Non-music hits are filtered out before
+    download. Each successful track becomes a normal catalogue row identical
+    to one created via POST /admin/songs/upload.
+    """
+    try:
+        result = await ytmusic_import.import_from_search(
+            query=payload.query,
+            limit=payload.limit,
+            db=db,
+            reupload_thumbnail=payload.reupload_thumbnail,
+        )
+    except cloud.CloudinaryNotConfigured as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+    return result
+
+
+@router.post(
+    "/import/playlist",
+    response_model=YTMusicImportResult,
+    dependencies=[Depends(require_admin)],
+    summary="Import tracks from a YouTube Music playlist",
+)
+async def import_from_ytmusic_playlist(
+    payload: YTMusicPlaylistImport,
+    db: AsyncSession = Depends(get_db),
+):
+    """Import from a playlist ID. Same pipeline as /import/search."""
+    try:
+        result = await ytmusic_import.import_from_playlist(
+            playlist_id=payload.playlist_id,
+            limit=payload.limit,
+            db=db,
+            reupload_thumbnail=payload.reupload_thumbnail,
+        )
+    except cloud.CloudinaryNotConfigured as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+    return result
 

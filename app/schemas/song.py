@@ -112,3 +112,39 @@ class SongDeleteResponse(BaseModel):
     rooms_cleared: int
     assets_purged: list[str] = []
     asset_errors: list[str] = []
+
+
+# ---------------------------------------------------------------------------
+# YouTube Music import (admin-only)
+# ---------------------------------------------------------------------------
+
+
+class YTMusicSearchImport(BaseModel):
+    """Body for POST /admin/import/search."""
+
+    query: str = Field(min_length=1, max_length=200)
+    limit: int = Field(default=8, ge=1, le=30)
+    reupload_thumbnail: bool = Field(
+        default=True,
+        description="Download the YT thumbnail and store it on our Cloudinary account",
+    )
+
+
+class YTMusicPlaylistImport(BaseModel):
+    """Body for POST /admin/import/playlist."""
+
+    playlist_id: str = Field(min_length=5, max_length=120)
+    limit: int = Field(default=12, ge=1, le=50)
+    reupload_thumbnail: bool = Field(
+        default=True,
+        description="Download the YT thumbnail and store it on our Cloudinary account",
+    )
+
+
+class YTMusicImportResult(BaseModel):
+    """Summary returned after a bulk import run."""
+
+    imported: int
+    skipped: int
+    errors: list[str] = []
+    songs: list[SongAdminResponse] = []
